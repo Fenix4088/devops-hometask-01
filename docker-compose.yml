@@ -50,6 +50,8 @@ services:
     image: ${DOCKERHUB_USERNAME}/todo-back:${APP_VERSION}
     restart: unless-stopped
     env_file: .env.development.back
+    environment:
+      APP_VERSION: ${APP_VERSION}
     ports:
       - "13000:3000"
     depends_on:
