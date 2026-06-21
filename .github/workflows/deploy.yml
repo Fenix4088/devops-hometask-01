@@ -19,8 +19,7 @@ jobs:
 
         include:
           - service: front
-            build-args: |
-              VITE_API_URL=${{ vars.VITE_API_URL }}
+            vite-api-url: ${{ vars.VITE_API_URL }}
 
 
     steps:
@@ -35,7 +34,7 @@ jobs:
           LATEST_TAG: latest
         run: |
           docker build \
-          --build-arg VITE_API_URL=${{ matrix.build-args }} \
+          --build-arg VITE_API_URL=${{ matrix.vite-api-url }} \
           -t ${{ vars.DOCKER_USER }}/todo-${{ matrix.service }}:${IMAGE_SHA} \
           -t ${{ vars.DOCKER_USER }}/todo-${{ matrix.service }}:${LATEST_TAG} \
           ./${{ matrix.service }}
