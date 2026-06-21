@@ -62,4 +62,17 @@ jobs:
                   sed -i "s|^APP_VERSION=.*|APP_VERSION=${{ needs.build.outputs.app_version }}|" .env.development.compose
                   docker compose --env-file .env.development.compose pull
                   docker compose --env-file .env.development.compose up -d --no-deps front back
+  
 
+  verify:
+    needs: [deploy]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Smoke
+        env:
+          E2E_API_URL: ${{ vars.VITE_API_URL }}
+        run: |
+          # vars.VITE_API_URL у нас вида https://домен/api → отрежем /api
+          export E2E_BASE_URL="${E2E_BASE_URL%/api}"
+          bash scripts/smoke.sh
