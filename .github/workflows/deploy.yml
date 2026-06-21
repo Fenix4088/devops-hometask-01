@@ -60,6 +60,6 @@ jobs:
           script: |
                   cd /var/www/it-incubator-app
                   sed -i "s|^APP_VERSION=.*|APP_VERSION=${{ needs.build.outputs.app_version }}|" .env.development.compose
-                  docker compose pull
-                  docker compose up -d --no-deps front back
+                  docker compose --env-file .env.development.compose pull
+                  docker compose --env-file .env.development.compose up -d --no-deps front back
 
