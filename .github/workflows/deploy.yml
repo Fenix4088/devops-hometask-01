@@ -13,8 +13,10 @@ jobs:
     needs: [checks]
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         service: [back, front]
+
         include:
           - service: front
             build-args: |
@@ -34,12 +36,12 @@ jobs:
         run: |
           docker build \
           --build-arg VITE_API_URL=${{ matrix.build-args }} \
-          -t ${{ vars.DOCKER_USER }}/todo-${{ matrix.build-args }}:${IMAGE_SHA} \
-          -t ${{ vars.DOCKER_USER }}/todo-${{ matrix.build-args }}:${LATEST_TAG} \
-          ./${{ matrix.build-args }}
+          -t ${{ vars.DOCKER_USER }}/todo-${{ matrix.service }}:${IMAGE_SHA} \
+          -t ${{ vars.DOCKER_USER }}/todo-${{ matrix.service }}:${LATEST_TAG} \
+          ./${{ matrix.service }}
 
-          docker push ${{ vars.DOCKER_USER }}/todo-${{ matrix.build-args }}:${IMAGE_SHA}
-          docker push ${{ vars.DOCKER_USER }}/todo-${{ matrix.build-args }}:${LATEST_TAG}
+          docker push ${{ vars.DOCKER_USER }}/todo-${{ matrix.service }}:${IMAGE_SHA}
+          docker push ${{ vars.DOCKER_USER }}/todo-${{ matrix.service }}:${LATEST_TAG}
           # Передаём SHA образов в output, чтобы не дублировать в deploy
           echo "image_sha=$IMAGE_SHA" >> "$GITHUB_OUTPUT"
 
