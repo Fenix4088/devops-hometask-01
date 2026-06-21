@@ -1,0 +1,45 @@
+name: Deploy
+
+on: 
+  push:
+    branches: [week4]
+
+jobs:
+  checks:
+    uses: ./.github/workflows/pr-check.yml
+
+
+  build:
+    needs: [checks]
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        service: [back, front]
+        include:
+          - service: front
+            build-args: |
+              VITE_API_URL=${{ vars.VITE_API_URL }}
+
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Login to DockerHub
+        run: docker login -u ${{ vars.DOCKER_USER }} -p ${{ secrets.DOCKER_PASS }}
+
+      - name: Build and push ${{ matrix.service }} image
+        env: 
+          DOCKERHUB_USERNAME: ${{ vars.DOCKER_USER }}
+          IMAGE_SHA: sha-${{ github.sha }}
+          LATEST_TAG: latest
+        run: |
+          docker build \
+          --build-arg VITE_API_URL=${{ matrix.build-args }} \
+          -t ${{ vars.DOCKER_USER }}/todo-${{ matrix.build-args }}:${IMAGE_SHA} \
+          -t ${{ vars.DOCKER_USER }}/todo-${{ matrix.build-args }}:${LATEST_TAG} \
+          ./${{ matrix.build-args }}
+
+          docker push ${{ vars.DOCKER_USER }}/todo-${{ matrix.build-args }}:${IMAGE_SHA}
+          docker push ${{ vars.DOCKER_USER }}/todo-${{ matrix.build-args }}:${LATEST_TAG}
+          # Передаём SHA образов в output, чтобы не дублировать в deploy
+          echo "image_sha=$IMAGE_SHA" >> "$GITHUB_OUTPUT"
+
