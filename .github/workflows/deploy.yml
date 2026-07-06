@@ -60,7 +60,7 @@ jobs:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          source: "docker-compose.yaml,monitoring,docker-compose.observability.yml"
+          source: "docker-compose.yaml,monitoring,docker-compose.observability.yml,Makefile"
           target: "/var/www/it-incubator-app"
 
       - uses: appleboy/ssh-action@v1.0.3
