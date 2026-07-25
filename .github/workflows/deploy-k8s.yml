@@ -63,7 +63,7 @@ jobs:
           echo "${{ secrets.KUBE_CONFIG }}" | base64 -d > ~/.kube/config
       - name: Deploy to k3s
         env:
-          IMAGE: ${{ needs.build.outputs.image }}
+          IMAGE: ${{ vars.DOCKER_USER }}/todo-back:${{ needs.build.outputs.app_version }}
           APP_VERSION: ${{ needs.build.outputs.app_version }}
         run: |
           envsubst < k8s/backend.yaml | kubectl apply -f -
