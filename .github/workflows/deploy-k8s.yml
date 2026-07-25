@@ -1,0 +1,116 @@
+name: Deploy
+
+on: 
+  push:
+    branches: [week*]
+
+jobs:
+  checks:
+    uses: ./.github/workflows/pr-check.yml
+
+
+  build:
+    needs: [checks]
+    runs-on: ubuntu-latest
+    outputs:
+      app_version: ${{ steps.build-push.outputs.app_version }}
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [back, front]
+
+        include:
+          - service: front
+            vite-api-url: ${{ vars.VITE_API_URL }}
+
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Login to DockerHub
+        run: docker login -u ${{ vars.DOCKER_USER }} -p ${{ secrets.DOCKER_PASS }}
+
+      - name: Build and push ${{ matrix.service }} image
+        id: build-push
+        env: 
+          DOCKERHUB_USERNAME: ${{ vars.DOCKER_USER }}
+          APP_VERSION: sha-${{ github.sha }}
+          LATEST_TAG: latest
+        run: |
+          docker build \
+          --build-arg VITE_API_URL=${{ matrix.vite-api-url }} \
+          -t ${{ vars.DOCKER_USER }}/todo-${{ matrix.service }}:${APP_VERSION} \
+          -t ${{ vars.DOCKER_USER }}/todo-${{ matrix.service }}:${LATEST_TAG} \
+          ./${{ matrix.service }}
+
+          docker push ${{ vars.DOCKER_USER }}/todo-${{ matrix.service }}:${APP_VERSION}
+          docker push ${{ vars.DOCKER_USER }}/todo-${{ matrix.service }}:${LATEST_TAG}
+          # Передаём SHA образов в output, чтобы не дублировать в deploy
+          echo "app_version=$APP_VERSION" >> "$GITHUB_OUTPUT"
+  
+
+  deploy:
+    needs: [build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup kubectl
+        uses: azure/setup-kubectl@v4
+      - name: Configure kubectl
+        run: |
+          mkdir -p ~/.kube
+          echo "${{ secrets.KUBE_CONFIG }}" | base64 -d > ~/.kube/config
+      - name: Deploy to k3s
+        env:
+          IMAGE: ${{ needs.build.outputs.image }}
+          APP_VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          envsubst < k8s/backend.yaml | kubectl apply -f -
+          kubectl rollout status deployment/backend --timeout=120s
+  
+
+  verify:
+    needs: [deploy]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Smoke
+        env:
+          E2E_BASE_URL: ${{ vars.VITE_API_URL }}
+        run: |
+          # vars.VITE_API_URL у нас вида https://домен/api → отрежем /api
+          export E2E_BASE_URL="${E2E_BASE_URL%/api}"
+          bash scripts/smoke.sh
+
+  notify:
+    needs: [checks, build, deploy, verify]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Notify
+        run: |
+          CHECKS="${{ needs.checks.result }}"
+          BUILD="${{ needs.build.result }}"
+          DEPLOY="${{ needs.deploy.result }}"
+          VERIFY="${{ needs.verify.result }}"
+          
+          if [ "$CHECKS" != "success" ]; then
+            TEXT="❌ Type-check упал%0A${{ github.repository }} @ ${{ github.ref_name }}%0A${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          elif [ "$BUILD" != "success" ]; then
+            TEXT="❌ Build упал%0A${{ github.repository }} @ ${{ github.ref_name }}%0A${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          elif [ "$DEPLOY" != "success" ]; then
+            TEXT="❌ Deploy упал%0A${{ github.repository }} @ ${{ github.ref_name }}%0A${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          elif [ "$VERIFY" != "success" ]; then
+            TEXT="❌ Smoke не прошёл (задеплоено, но не отвечает корректно)%0A${{ github.repository }} @ ${{ github.ref_name }}%0A${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          else
+            TEXT="✅ Деплой успешен%0A${{ github.repository }} @ ${{ github.ref_name }}%0AActor: ${{ github.actor }}%0AVersion: sha-${{ github.sha }}"
+          fi
+          
+          RESPONSE=$(curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
+          -d "chat_id=${{ secrets.TELEGRAM_CHAT_ID }}" \
+          -d "text=$TEXT" \
+          -d "disable_web_page_preview=true")
+        
+          echo "$RESPONSE"
+          echo "$RESPONSE" | grep -q '"ok":true' || { echo "Telegram API rejected"; exit 1; }
+
+
